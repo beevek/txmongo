@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from bson.son import SON
-from pymongo import helpers
+from pymongo import auth
 from twisted.internet import defer
 from txmongo.collection import Collection
 
@@ -109,7 +109,7 @@ class Database(object):
 
     def authenticate_with_nonce(self, result, name, password, d):
         nonce = result['nonce']
-        key = helpers._auth_key(nonce, name, password)
+        key = auth._auth_key(nonce, name, password)
 
         # hacky because order matters
         auth_command = SON(authenticate=1)
