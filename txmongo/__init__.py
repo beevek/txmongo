@@ -20,6 +20,7 @@ from   twisted.internet          import defer, reactor, task
 from   twisted.internet.protocol import ReconnectingClientFactory
 from   txmongo.database          import Database
 from   txmongo.protocol          import MongoProtocol, Query
+from   twisted.python            import log
 
 class _Connection(ReconnectingClientFactory):
     __notify_ready = None
@@ -43,6 +44,11 @@ class _Connection(ReconnectingClientFactory):
     def buildProtocol(self, addr):
         # Build the protocol.
         p = ReconnectingClientFactory.buildProtocol(self, addr)
+
+        log.msg('connected to mongo %s' % addr)
+        # on connection ensure we reset potential delays from previous
+        # reconnect attempts
+        self.resetDelay()
 
         # If we do not care about connecting to a slave, then we can simply
         # return the protocol now and fire that we are ready.
@@ -130,11 +136,13 @@ class _Connection(ReconnectingClientFactory):
 
     def clientConnectionFailed(self, connector, reason):
         if self.continueTrying:
+            log.err('mongo connection failed: %s' % reason.getErrorMessage())
             self.connector = connector
             self.retryNextHost()
 
     def clientConnectionLost(self, connector, reason):
         if self.continueTrying:
+            log.err('mongo connection lost: %s' % reason.getErrorMessage())
             self.connector = connector
             self.retryNextHost()
 
@@ -179,6 +187,9 @@ class _Connection(ReconnectingClientFactory):
             delay = True
 
         connector.host, connector.port = allNodes[self.__index]
+
+        log.msg('attempting mongo reconnect to %s:%s' %
+                  (connector.host, connector.port))
 
         if delay:
             self.retry(connector)
@@ -289,7 +300,6 @@ MongoConnectionPool = MongoConnection
 
 if __name__ == '__main__':
     import sys
-    from twisted.python import log
 
     log.startLogging(sys.stdout)
     connection = Connection()
