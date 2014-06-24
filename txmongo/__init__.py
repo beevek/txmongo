@@ -40,6 +40,7 @@ class _Connection(ReconnectingClientFactory):
         self.__uri = uri
         self.__conf_loop = task.LoopingCall(lambda: self.configure(self.instance))
         self.__conf_loop.start(self.__conf_loop_seconds, now=False)
+        self.__reconnected = False
 
     def buildProtocol(self, addr):
         # Build the protocol.
@@ -54,6 +55,9 @@ class _Connection(ReconnectingClientFactory):
         # return the protocol now and fire that we are ready.
         if self.uri['options'].get('slaveok', False):
             p.connectionReady().addCallback(lambda _: self.setInstance(instance=p))
+            # if we had reconnected, authenticate the db objects again
+            if self.__reconnected:
+                p.connectionReady().addCallback(lambda _: self.onReconnect())
             return p
 
         # Update our server configuration. This may disconnect if the node
@@ -61,6 +65,13 @@ class _Connection(ReconnectingClientFactory):
         p.connectionReady().addCallback(lambda _: self.configure(p))
 
         return p
+
+    @defer.inlineCallbacks
+    def onReconnect(self):
+        self.__reconnected = False
+        for n, db in self.__pool._db_cache.iteritems():
+            log.msg('reauthenticating for db %s' % db)
+            yield db.reauthenticate()
 
     def configure(self, proto):
         """
@@ -133,6 +144,9 @@ class _Connection(ReconnectingClientFactory):
 
         # Notify deferreds waiting for completion.
         self.setInstance(instance=proto)
+        # if we had reconnected, authenticate the db objects again
+        if self.__reconnected:
+            proto.connectionReady().addCallback(lambda _: self.onReconnect())
 
     def clientConnectionFailed(self, connector, reason):
         if self.continueTrying:
@@ -191,6 +205,7 @@ class _Connection(ReconnectingClientFactory):
         log.msg('attempting mongo reconnect to %s:%s' %
                   (connector.host, connector.port))
 
+        self.__reconnected = True
         if delay:
             self.retry(connector)
         else:
@@ -232,6 +247,8 @@ class ConnectionPool(object):
         self.__pool_size = pool_size
         self.__pool = [_Connection(self, self.__uri) for i in xrange(pool_size)]
 
+        self._db_cache = {}
+
         host, port = self.__uri['nodelist'][0]
         for factory in self.__pool:
             factory.connector = reactor.connectTCP(host, port, factory)
@@ -240,7 +257,11 @@ class ConnectionPool(object):
         return self.__pool
 
     def __getitem__(self, name):
-        return Database(self, name)
+        if name in self._db_cache:
+            return self._db_cache[name]
+        db = Database(self, name)
+        self._db_cache[name] = db
+        return db
 
     def __getattr__(self, name):
         return self[name]

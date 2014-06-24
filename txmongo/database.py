@@ -17,6 +17,7 @@ from bson.son import SON
 from pymongo import auth
 from twisted.internet import defer
 from txmongo.collection import Collection
+from twisted.python import log
 
 
 class Database(object):
@@ -25,6 +26,8 @@ class Database(object):
     def __init__(self, factory, database_name):
         self.__factory = factory
         self._database_name = unicode(database_name)
+        self._username = None
+        self._password = None
 
     def __str__(self):
         return self._database_name
@@ -90,6 +93,11 @@ class Database(object):
         d.addCallback(wrapper)
         return d
 
+    def reauthenticate(self):
+        if self._username is None or self._password is None:
+            return defer.succeed(True)
+        return self.authenticate(self._username, self._password)
+
     def authenticate(self, name, password):
         """
         Send an authentication command for this database.
@@ -99,6 +107,9 @@ class Database(object):
             raise TypeError("name must be an instance of basestring")
         if not isinstance(password, basestring):
             raise TypeError("password must be an instance of basestring")
+
+        self._username = name
+        self._password = password
 
         d = defer.Deferred()
         # First get the nonce
@@ -128,6 +139,7 @@ class Database(object):
         """might want to just call callback with 0.0 instead of errback"""
         ok = result['ok']
         if ok:
+            log.msg('authenticated successfully on %s' % self._database_name)
             d.callback(ok)
         else:
             d.errback(result['errmsg'])
