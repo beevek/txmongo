@@ -21,6 +21,7 @@ from   twisted.internet.protocol import ReconnectingClientFactory
 from   txmongo.database          import Database
 from   txmongo.protocol          import MongoProtocol, Query
 from   twisted.python            import log
+from   twisted.python.failure    import Failure
 
 class _Connection(ReconnectingClientFactory):
     __notify_ready = None
@@ -212,6 +213,8 @@ class _Connection(ReconnectingClientFactory):
             connector.connect()
 
     def setInstance(self, instance=None, reason=None):
+        if self.instance and self.instance != instance:
+            self.instance.connectionLost(Failure(Exception('reconnection')))
         self.instance = instance
         deferreds, self.__notify_ready = self.__notify_ready, []
         if deferreds:
