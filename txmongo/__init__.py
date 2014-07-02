@@ -42,6 +42,7 @@ class _Connection(ReconnectingClientFactory):
         self.__conf_loop = task.LoopingCall(lambda: self.configure(self.instance))
         self.__conf_loop.start(self.__conf_loop_seconds, now=False)
         self.__reconnected = False
+        self.connected = False
 
     def buildProtocol(self, addr):
         # Build the protocol.
@@ -150,14 +151,16 @@ class _Connection(ReconnectingClientFactory):
             proto.connectionReady().addCallback(lambda _: self.onReconnect())
 
     def clientConnectionFailed(self, connector, reason):
+        log.err('mongo connection failed: %s' % reason.getErrorMessage())
+        self.connected = False
         if self.continueTrying:
-            log.err('mongo connection failed: %s' % reason.getErrorMessage())
             self.connector = connector
             self.retryNextHost()
 
     def clientConnectionLost(self, connector, reason):
+        log.err('mongo connection lost: %s' % reason.getErrorMessage())
+        self.connected = False
         if self.continueTrying:
-            log.err('mongo connection lost: %s' % reason.getErrorMessage())
             self.connector = connector
             self.retryNextHost()
 
@@ -215,6 +218,8 @@ class _Connection(ReconnectingClientFactory):
     def setInstance(self, instance=None, reason=None):
         if self.instance and self.instance != instance:
             self.instance.connectionLost(Failure(Exception('reconnection')))
+        if instance:
+            self.connected = True
         self.instance = instance
         deferreds, self.__notify_ready = self.__notify_ready, []
         if deferreds:
@@ -287,6 +292,10 @@ class ConnectionPool(object):
         df = defer.Deferred()
         reactor.callLater(0, df.callback, None)
         return df
+
+    def isconnected(self):
+        connection = self.__pool[self.__index]
+        return connection.connected
 
     def getprotocol(self):
         # Get the next protocol available for communication in the pool.
