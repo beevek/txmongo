@@ -30,6 +30,7 @@ class _Connection(ReconnectingClientFactory):
     __uri = None
     __conf_loop = None
     __conf_loop_seconds = 300.0
+    __use_discovered = False
     instance = None
     protocol = MongoProtocol
     maxDelay = 60
@@ -42,6 +43,7 @@ class _Connection(ReconnectingClientFactory):
         self.__conf_loop = task.LoopingCall(lambda: self.configure(self.instance))
         self.__conf_loop.start(self.__conf_loop_seconds, now=False)
         self.__reconnected = False
+        self.__slave_ok = self.__uri['options'].get('slaveok', False)
         self.connected = False
 
     def buildProtocol(self, addr):
@@ -55,7 +57,7 @@ class _Connection(ReconnectingClientFactory):
 
         # If we do not care about connecting to a slave, then we can simply
         # return the protocol now and fire that we are ready.
-        if self.uri['options'].get('slaveok', False):
+        if self.__slave_ok:
             p.connectionReady().addCallback(lambda _: self.setInstance(instance=p))
             # if we had reconnected, authenticate the db objects again
             if self.__reconnected:
@@ -139,7 +141,7 @@ class _Connection(ReconnectingClientFactory):
 
         # Check if this node is the master.
         ismaster = config.get('ismaster')
-        if not ismaster:
+        if not self.__slave_ok and not ismaster:
             reason = pymongo.errors.AutoReconnect('not master')
             proto.fail(reason)
             return
@@ -199,7 +201,9 @@ class _Connection(ReconnectingClientFactory):
         delay = False
         self.__index += 1
 
-        allNodes = list(self.uri['nodelist']) + list(self.__discovered)
+        allNodes = list(self.uri['nodelist'])
+        if self.__use_discovered:
+            allNodes += list(self.__discovered)
         if self.__index >= len(allNodes):
             self.__index = 0
             delay = True
