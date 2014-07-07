@@ -30,6 +30,11 @@ class _Connection(ReconnectingClientFactory):
     __uri = None
     __conf_loop = None
     __conf_loop_seconds = 300.0
+    # set this to True to enable connecting to discovered members of the
+    # replica set (upon failure of connection to main uri)
+    # NOTE currently the next-member selection is not very smart.
+    # it would make sense to use the data provided by mongo and sort by
+    # latency, for example.
     __use_discovered = False
     instance = None
     protocol = MongoProtocol
