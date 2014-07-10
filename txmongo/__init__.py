@@ -55,7 +55,7 @@ class _Connection(ReconnectingClientFactory):
         # Build the protocol.
         p = ReconnectingClientFactory.buildProtocol(self, addr)
 
-        log.msg('connected to mongo %s' % addr)
+        log.err('connected to mongo %s' % addr)
         # on connection ensure we reset potential delays from previous
         # reconnect attempts
         self.resetDelay()
@@ -79,7 +79,7 @@ class _Connection(ReconnectingClientFactory):
     def onReconnect(self):
         self.__reconnected = False
         for n, db in self.__pool._db_cache.iteritems():
-            log.msg('reauthenticating for db %s' % db)
+            log.err('reauthenticating for db %s' % db)
             yield db.reauthenticate()
 
     def configure(self, proto):
@@ -194,7 +194,7 @@ class _Connection(ReconnectingClientFactory):
         configured list of hosts.
         """
         if not self.continueTrying:
-            log.msg("Abandoning %s on explicit request" % (connector,))
+            log.err("Abandoning %s on explicit request" % (connector,))
             return
 
         if connector is None:
@@ -215,7 +215,7 @@ class _Connection(ReconnectingClientFactory):
 
         connector.host, connector.port = allNodes[self.__index]
 
-        log.msg('attempting mongo reconnect to %s:%s' %
+        log.err('attempting mongo reconnect to %s:%s' %
                   (connector.host, connector.port))
 
         self.__reconnected = True
