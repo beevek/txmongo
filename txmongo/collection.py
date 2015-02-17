@@ -131,7 +131,19 @@ class Collection(object):
         reply = yield proto.send_QUERY(query)
         documents = reply.documents
         while reply.cursor_id:
-            to_fetch = 0 if limit <= 0 else limit - len(documents)
+            if limit <= 0:
+                # when no limit, instruct mongo to send default batch size
+                to_fetch = 0
+            else:
+                # limiting, tell mongo the most we wish to receive
+                # which it may break up into further batches
+                remaining = limit - len(documents)
+                if remaining >= 0 and len(documents) < limit:
+                    to_fetch = remaining
+                else:
+                    # we have at least as many as we asked for,
+                    # final trim below
+                    break
             getmore = Getmore(collection=str(self),
                               n_to_return=to_fetch,
                               cursor_id=reply.cursor_id)
